@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Funder Finder — conversational grant discovery</title>
+<style>
+  :root {
+    --bg: #faf9f6;        /* warm cream canvas */
+    --surface: #ffffff;   /* primary surface */
+    --ink: #111111;       /* off black */
+    --mut: #7b7b78;       /* muted text */
+    --mut2: #626260;
+    --oat: #dedbd6;       /* warm oat border */
+    --fin: #ff5600;       /* Fin orange — AI/brand accent only */
+    --blue: #0007cb;      /* report deep blue (federal) */
+    --blue-t: rgba(101,181,255,.20);
+    --green-d: #0a7a2e;   /* foundation text */
+    --green-t: rgba(11,223,80,.16);
+    --webo: #c43a00;      /* report orange text (web) */
+    --web-t: rgba(254,76,2,.12);
+    --due: #c41c1c;       /* report red */
+    --sans: "Saans","Saans Fallback",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono: "SaansMono","SaansMono Fallback",ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans);
+    font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  header { padding: 18px 24px; border-bottom: 1px solid var(--oat);
+    display: flex; align-items: center; gap: 12px; background: var(--bg); }
+  header h1 { font-size: 22px; margin: 0; line-height: 1.0; letter-spacing: -0.6px; font-weight: 400; }
+  header h1 .dot { color: var(--fin); }
+  header .sub { font-family: var(--mono); font-size: 12px; letter-spacing: .6px;
+    text-transform: uppercase; color: var(--mut); }
+  header a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--oat); }
+  main { max-width: 880px; margin: 0 auto; padding: 22px 18px; }
+  #log { display: flex; flex-direction: column; gap: 16px; }
+  .turn { display: flex; flex-direction: column; gap: 9px; }
+  .you { align-self: flex-end; background: var(--ink); color: #fff;
+    padding: 9px 14px; border-radius: 4px; max-width: 80%; line-height: 1.45; }
+  .agent { background: var(--surface); border: 1px solid var(--oat);
+    padding: 14px 16px; border-radius: 8px; }
+  .agent .reasoning { white-space: pre-wrap; line-height: 1.5; }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; margin: 2px 0; }
+  .chip { font-family: var(--mono); font-size: 11px; letter-spacing: .6px; text-transform: uppercase;
+    color: var(--mut2); background: var(--bg); border: 1px solid var(--oat);
+    border-left: 2px solid var(--fin); border-radius: 4px; padding: 4px 9px; }
+  .chip b { color: var(--ink); font-weight: 500; }
+  .cards { display: grid; gap: 10px; margin-top: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--oat);
+    border-radius: 8px; padding: 13px 15px; transition: border-color .15s ease; }
+  .card:hover { border-color: #c9c4bb; }
+  .card .t { font-size: 17px; letter-spacing: -0.2px; font-weight: 400; line-height: 1.2; }
+  .card .t a { color: var(--ink); text-decoration: none; }
+  .card .t a:hover { color: var(--fin); }
+  .card .meta { color: var(--mut2); font-size: 13px; margin-top: 6px;
+    display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+  .tag { font-family: var(--mono); text-transform: uppercase; font-size: 10px; letter-spacing: .8px;
+    padding: 2px 7px; border-radius: 4px; font-weight: 500; }
+  .tag.federal { background: var(--blue-t); color: var(--blue); }
+  .tag.foundation { background: var(--green-t); color: var(--green-d); }
+  .tag.web { background: var(--web-t); color: var(--webo); }
+  .card .desc { color: var(--mut2); font-size: 14px; margin-top: 7px; line-height: 1.45; }
+  .due { color: var(--due); }
+  footer { position: sticky; bottom: 0;
+    background: linear-gradient(transparent, var(--bg) 28%); padding: 14px 18px 18px; }
+  .composer { max-width: 880px; margin: 0 auto; background: var(--surface);
+    border: 1px solid var(--oat); border-radius: 8px; padding: 12px; }
+  .composer.drag { border-color: var(--fin); }
+  .pill { display: inline-flex; align-items: center; gap: 8px; font-size: 13px;
+    color: var(--mut2); background: var(--bg); border: 1px solid var(--oat);
+    border-radius: 4px; padding: 5px 11px; margin-bottom: 9px; }
+  .pill b { color: var(--ink); font-weight: 500; }
+  .pill button { background: none; border: none; color: var(--mut); cursor: pointer; font-size: 14px; padding: 0; }
+  .row { display: flex; gap: 8px; align-items: flex-end; }
+  textarea { flex: 1; resize: none; background: transparent; border: none; color: var(--ink);
+    font-family: var(--sans); font-size: 16px; outline: none; max-height: 160px; padding: 7px; line-height: 1.5; }
+  textarea::placeholder { color: var(--mut); }
+  .btn { font-family: var(--sans); font-size: 14px; border: 1px solid transparent;
+    border-radius: 4px; padding: 9px 15px; font-weight: 400; cursor: pointer;
+    transition: transform .12s ease, background .12s ease, color .12s ease; transform-origin: center; }
+  .send { background: var(--ink); color: #fff; }
+  .send:hover { background: #fff; color: var(--ink); border-color: var(--ink); transform: scale(1.06); }
+  .send:active { background: #2c6415; color: #fff; border-color: #2c6415; transform: scale(0.9); }
+  .send:disabled { opacity: .45; cursor: default; transform: none; background: var(--ink); color: #fff; }
+  .attach { background: var(--surface); color: var(--ink); border-color: var(--ink); }
+  .attach:hover { transform: scale(1.06); }
+  .attach:active { transform: scale(0.9); }
+  .hint { color: var(--mut); font-size: 12px; text-align: center; margin-top: 9px; }
+  .examples { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 9px; }
+  .ex { font-size: 13px; color: var(--mut2); background: var(--bg);
+    border: 1px solid var(--oat); border-radius: 4px; padding: 6px 12px; cursor: pointer;
+    transition: border-color .12s ease, color .12s ease; }
+  .ex:hover { color: var(--ink); border-color: var(--ink); }
+  .empty { color: var(--mut2); text-align: center; padding: 44px 14px; line-height: 1.6; font-size: 15px; }
+  .empty b { color: var(--ink); font-weight: 500; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Funder Finder<span class="dot">.</span></h1>
+  <span class="sub">conversational grant discovery · <a href="/healthz" target="_blank">status</a></span>
+</header>
+<main>
+  <div id="log">
+    <div class="empty" id="empty">
+      Describe your work, or drop a proposal PDF below. I search a unified index of
+      <b>federal grants</b> (Grants.gov: NSF, NIH, DARPA, DOE…) and <b>foundation programs</b>
+      (Kindora), and only fall back to live web search for very recent postings.
+    </div>
+  </div>
+</main>
+<footer>
+  <div class="composer" id="composer">
+    <div class="examples" id="examples">
+      <div class="ex">climate-resilient agriculture for smallholder farmers</div>
+      <div class="ex">youth mental health programs in California</div>
+      <div class="ex">early-career NSF funding in materials science</div>
+    </div>
+    <div id="attached"></div>
+    <div class="row">
+      <textarea id="input" rows="1" placeholder="Describe your research or program…"></textarea>
+      <button class="btn attach" id="attachBtn" title="Attach proposal PDF">PDF</button>
+      <button class="btn send" id="send">Send</button>
+    </div>
+    <input type="file" id="file" accept="application/pdf" hidden />
+  </div>
+  <div class="hint">Results link to official agency and funder pages. The agent will not invent a program or deadline.</div>
+</footer>
+<script>
+const API = location.origin;
+const log = document.getElementById('log');
+const input = document.getElementById('input');
+const send = document.getElementById('send');
+const fileInput = document.getElementById('file');
+const composer = document.getElementById('composer');
+const attached = document.getElementById('attached');
+let proposalId = null;
+let history = [];
+let busy = false;
+
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+});
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+});
+send.addEventListener('click', submit);
+document.getElementById('attachBtn').addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => fileInput.files[0] && upload(fileInput.files[0]));
+document.querySelectorAll('.ex').forEach(el =>
+  el.addEventListener('click', () => { input.value = el.textContent; input.focus(); }));
+
+['dragover','dragenter'].forEach(ev => composer.addEventListener(ev, e => {
+  e.preventDefault(); composer.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev => composer.addEventListener(ev, e => {
+  e.preventDefault(); composer.classList.remove('drag'); }));
+composer.addEventListener('drop', e => {
+  const f = e.dataTransfer.files[0];
+  if (f && f.type === 'application/pdf') upload(f);
+});
+
+async function upload(file) {
+  attached.innerHTML = `<span class="pill">Reading <b>${escapeHtml(file.name)}</b>…</span>`;
+  const fd = new FormData(); fd.append('file', file);
+  try {
+    const r = await fetch(API + '/api/upload', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    const d = await r.json();
+    proposalId = d.proposal_id;
+    attached.innerHTML = `<span class="pill">📄 <b>${escapeHtml(file.name)}</b> attached
+      (${d.chars.toLocaleString()} chars) <button id="clearPdf">✕</button></span>`;
+    document.getElementById('clearPdf').onclick = () => { proposalId = null; attached.innerHTML = ''; };
+    if (!input.value.trim()) input.value = 'Find grants that fit this proposal.';
+  } catch (err) {
+    attached.innerHTML = `<span class="pill">Upload failed: ${escapeHtml(err.message)}</span>`;
+  }
+}
+
+function el(cls, html) { const d = document.createElement('div'); d.className = cls; if (html != null) d.innerHTML = html; return d; }
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function renderCard(o) {
+  const card = el('card ' + (o.source || 'federal'));
+  const due = o.deadline_date ? `<span class="due">due ${o.deadline}</span>` : (o.deadline || 'Rolling');
+  const focus = (o.focus_areas || []).slice(0,4).join(' · ');
+  card.innerHTML = `
+    <div class="t"><a href="${escapeHtml(o.url)}" target="_blank" rel="noopener">${escapeHtml(o.title)}</a></div>
+    <div class="meta">
+      <span class="tag ${o.source}">${o.source}</span>
+      ${o.agency ? '<span>'+escapeHtml(o.agency)+'</span>' : ''}
+      <span>${due}</span>
+      ${o.amount ? '<span>'+escapeHtml(o.amount)+'</span>' : ''}
+    </div>
+    ${o.description ? '<div class="desc">'+escapeHtml(o.description)+'</div>' : ''}
+    ${focus ? '<div class="meta">'+escapeHtml(focus)+'</div>' : ''}`;
+  return card;
+}
+
+async function submit() {
+  const msg = input.value.trim();
+  if ((!msg && !proposalId) || busy) return;
+  const empty = document.getElementById('empty'); if (empty) empty.remove();
+  document.getElementById('examples').style.display = 'none';
+
+  const youText = msg || '(find grants for the attached proposal)';
+  const youTurn = el('turn'); youTurn.appendChild(el('you', escapeHtml(youText)));
+  log.appendChild(youTurn);
+
+  const agentTurn = el('turn');
+  const chips = el('chips'); const reasoning = el('agent reasoning');
+  const cards = el('cards');
+  agentTurn.appendChild(chips); agentTurn.appendChild(reasoning); agentTurn.appendChild(cards);
+  log.appendChild(agentTurn);
+  window.scrollTo(0, document.body.scrollHeight);
+
+  busy = true; send.disabled = true; input.value = ''; input.style.height = 'auto';
+  let reasoningText = '';
+  const pid = proposalId;
+
+  try {
+    const r = await fetch(API + '/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, proposal_id: pid, history }),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(()=>({}))).detail || r.statusText);
+    const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = '';
+    while (true) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n'); buf = parts.pop();
+      for (const p of parts) {
+        const line = p.split('\n').find(l => l.startsWith('data:'));
+        if (!line) continue;
+        const ev = JSON.parse(line.slice(5).trim());
+        if (ev.type === 'message') { reasoningText += ev.text; reasoning.textContent = reasoningText; }
+        else if (ev.type === 'tool_call') {
+          const q = ev.input && ev.input.query ? ': ' + escapeHtml(ev.input.query) : '';
+          chips.appendChild(el('chip', `<b>${ev.tool}</b>${q}`));
+        }
+        else if (ev.type === 'results') { ev.opportunities.forEach(o => cards.appendChild(renderCard(o))); }
+        else if (ev.type === 'error') { reasoning.innerHTML += `<div style="color:#c41c1c">⚠ ${escapeHtml(ev.text)}</div>`; }
+        window.scrollTo(0, document.body.scrollHeight);
+      }
+    }
+    history.push({ role: 'user', content: youText });
+    if (reasoningText) history.push({ role: 'assistant', content: reasoningText });
+    if (history.length > 8) history = history.slice(-8);
+  } catch (err) {
+    reasoning.innerHTML += `<div style="color:#c41c1c">⚠ ${escapeHtml(err.message)}</div>`;
+  } finally {
+    busy = false; send.disabled = false; input.focus();
+  }
+}
+</script>
+</body>
+</html>

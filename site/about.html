@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>How Funder Finder works — and what the numbers actually mean</title>
+<meta name="description" content="The architecture behind Funder Finder, the paper it's built on, and an honest read of which claims are measured and which are observed." />
+<style>
+  :root {
+    --bg:#faf9f6; --surface:#ffffff; --ink:#111111; --mut:#7b7b78; --mut2:#626260;
+    --oat:#dedbd6; --fin:#ff5600;
+    --sans:"Saans","Saans Fallback",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:"SaansMono","SaansMono Fallback",ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:#313130; font-family:var(--sans);
+    font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+  a { color:var(--ink); }
+  .wrap { max-width:680px; margin:0 auto; padding:0 24px; }
+  header { border-bottom:1px solid var(--oat); }
+  nav { display:flex; justify-content:space-between; align-items:center; padding:18px 0; }
+  nav .brand { font-weight:400; font-size:20px; letter-spacing:-0.5px; color:var(--ink); text-decoration:none; }
+  nav .brand .dot { color:var(--fin); }
+  nav a.lnk { color:var(--mut2); text-decoration:none; margin-left:20px; font-size:15px; }
+  nav a.lnk:hover { color:var(--ink); }
+  h1 { color:var(--ink); font-size:40px; line-height:1.0; letter-spacing:-1.4px; font-weight:400; margin:44px 0 10px; }
+  .dek { color:var(--mut2); font-size:19px; line-height:1.4; letter-spacing:-0.2px; margin:0 0 30px; }
+  h2 { color:var(--ink); font-size:26px; line-height:1.0; letter-spacing:-0.6px; font-weight:400; margin:36px 0 12px; }
+  p { margin:0 0 16px; }
+  .note { background:var(--surface); border:1px solid var(--oat); border-left:3px solid var(--fin);
+    border-radius:8px; padding:18px 20px; margin:24px 0; }
+  .note h2 { margin-top:0; }
+  code { font-family:var(--mono); background:var(--surface); border:1px solid var(--oat);
+    border-radius:4px; padding:1px 6px; font-size:13.5px; }
+  footer { color:var(--mut); font-size:13px; padding:34px 0 60px; border-top:1px solid var(--oat); margin-top:42px; line-height:1.6; }
+  footer a { color:var(--mut2); }
+  @media (max-width:600px){ h1{font-size:32px; letter-spacing:-1.0px;} }
+</style>
+</head>
+<body>
+<header><div class="wrap"><nav>
+  <a class="brand" href="/funder-finder/">Funder Finder<span class="dot">.</span></a>
+  <span><a class="lnk" href="/funder-finder/">Home</a><a class="lnk" href="https://arxiv.org/abs/2605.02366" target="_blank">The paper</a></span>
+</nav></div></header>
+
+<div class="wrap">
+  <h1>How it works, and what the numbers actually mean</h1>
+  <p class="dek">An honest tour of the architecture, the research it copies, and the difference
+    between a measured result and a self-reported one.</p>
+
+  <p>Grant discovery is a fragmentation problem before it is an AI problem. A researcher in
+    climate-adapted agriculture has to check <a href="https://www.grants.gov" target="_blank">Grants.gov</a>,
+    NSF's portal, USDA's NIFA, DOE, and a long tail of private foundations, each with its own search
+    box, its own vocabulary, and its own idea of what a deadline field looks like. The work is not
+    hard so much as it is scattered, and scattered work is exactly what a well-built agent can
+    compress.</p>
+
+  <p>This tool is an independent build of a published system: Zhisheng Tang and Mayank Kejriwal's
+    <a href="https://arxiv.org/abs/2605.02366" target="_blank">"A Compound AI Agent for Conversational
+    Grant Discovery"</a>, out of USC and GRAIL, presented at the 2026 ACM Conference on Agentic and AI
+    Systems. Their live version runs at <a href="https://grail.page" target="_blank">grail.page</a>. I
+    rebuilt the architecture to understand it from the inside, and because the foundation-data half
+    maps cleanly onto a service I could plug in rather than scrape.</p>
+
+  <h2>Two layers, loosely coupled</h2>
+  <p>The paper's core idea is a
+    <a href="https://bair.berkeley.edu/blog/2024/02/18/compound-ai-systems/" target="_blank">compound
+    system</a>: several components in sequence rather than one model doing everything. There are two.</p>
+
+  <p>The first is an aggregation layer. In the paper, LLM-equipped browser agents crawl Grants.gov,
+    DARPA, and foundation websites on a biweekly schedule, pass the raw HTML through a language model
+    with a schema, and extract canonical fields like title, description, URL, and end date into a
+    unified index. By their count the index holds about 11,800 opportunities, and foundations
+    dominate it at 8,696, followed by NSF at 805 and a tail of NIH, DARPA, and DOE. This build keeps
+    the same shape but takes a shortcut that happens to be a real improvement: instead of scraping
+    foundations, it queries <a href="https://kindora.co" target="_blank">Kindora</a>, which already
+    maintains that corpus from IRS 990 filings and funder sites. Federal opportunities come live from
+    the <a href="https://www.grants.gov" target="_blank">Grants.gov</a> public API. Both are
+    normalized into one record shape at request time, so the agent never has to know which portal a
+    result came from.</p>
+
+  <p>The second layer is the query agent: a
+    <a href="https://arxiv.org/abs/2210.03629" target="_blank">ReAct</a>-style loop with exactly two
+    tools, <code>search_index</code> and <code>web_search</code>. You can hand it a proposal PDF and
+    it reads the full text as context, pulling out the domain and methods itself rather than asking
+    you to type keywords. Its strategy is fixed and deliberately conservative: search the structured
+    index first, because that data is grounded and verifiable, and only fall back to web search when
+    the index comes up thin or you ask about something posted in the last few days. Every result it
+    shows is tied to a real URL from a tool call. The design exists specifically to stop a language
+    model from doing the thing language models love to do, which is confidently describe a grant
+    program that does not exist.</p>
+
+  <p>One deviation worth naming: where the paper syncs its index into Algolia and serves cached,
+    pre-crawled data, this prototype queries Kindora and Grants.gov live on each request. For a
+    single-instance build that trades a little latency for zero crawl infrastructure and fresher
+    federal data. If you wanted the paper's exact setup, you would mirror both sources into a
+    Postgres index on a schedule and search that.</p>
+
+  <div class="note">
+    <h2>The 30-to-10 number, read carefully</h2>
+    <p>The headline claim from the paper is that discovery time drops from 30 to 45 minutes of manual
+      portal searching to under 10 minutes. It is a genuinely useful framing of the problem, and I
+      use it as a design target. It is also not a benchmark.</p>
+    <p>The authors are explicit about this. The paper offers no formal evaluation and no controlled
+      comparison. The 30-to-45-minute baseline is described as what a manual search "typically"
+      takes, and the under-10-minutes figure comes from a walkthrough scenario, not a timed study with
+      participants. The same goes for the other numbers you will see quoted: 3,000-plus users, a first
+      token within two seconds, the biweekly refresh. These are deployment observations and product
+      telemetry, reported in good faith, but they are not results in the sense a reviewer would mean
+      the word. There is no control group, no task suite, no measure of whether the opportunities
+      surfaced were the right ones.</p>
+    <p>So the honest version is this: the architecture is sound and the efficiency story is plausible,
+      but anyone citing the time savings as a proven outcome is overreading the paper. If that number
+      matters to a decision you are making, the experiment to run is your own, against your own
+      portals and your own definition of a good match.</p>
+  </div>
+
+  <h2>What I'd want measured next</h2>
+  <p>The interesting open question is not speed, it is precision. A system that returns twelve
+    opportunities in eight seconds has done nothing for you if three of them are off-topic and the
+    best fit is missing. The claims that would actually move me are recall and relevance against a
+    labeled set: given a real proposal and an expert's shortlist of programs that fit it, how many
+    does the agent find, and how much of what it returns is noise. None of the deployed systems,
+    this one included, report that yet. Until they do, the efficiency numbers are a story about
+    convenience, not about quality.</p>
+
+  <p>That gap is the whole reason to build in public. You can read the code, run it against your own
+    work, and see exactly which tool was called and why before you trust a single result.</p>
+
+  <footer>
+    A <a href="https://wayan.com">wayan.com</a> project. Architecture from
+    <a href="https://arxiv.org/abs/2605.02366">Tang &amp; Kejriwal, arXiv:2605.02366</a>.
+    Data from <a href="https://www.grants.gov">Grants.gov</a> and
+    <a href="https://kindora.co">Kindora</a>. Not affiliated with USC, GRAIL, or Kindora.
+  </footer>
+</div>
+</body>
+</html>
