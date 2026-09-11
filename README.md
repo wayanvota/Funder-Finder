@@ -148,3 +148,28 @@ wiring up to the model boundary is verified.
 Architecture source:
 [arXiv:2605.02366](https://arxiv.org/abs/2605.02366). Not affiliated with USC,
 GRAIL, or Kindora.
+
+## End-to-end tests
+
+The deterministic end-to-end suite starts the real FastAPI application, opens
+the production browser UI in Chromium, and substitutes only the Anthropic and
+grant-provider boundary with fixed events. It covers the normal search and PDF
+flows, visible provider failure and retry, validation limits, mobile and
+keyboard use, markup injection, unsafe provider links, malformed history, path
+filenames, cross-origin credentials, and error leakage. It does not call paid
+models, Grants.gov, Kindora, Tavily, Render, or the public website.
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r backend/requirements-dev.txt
+python -m playwright install chromium
+pytest -q tests/test_e2e.py
+```
+
+Run one category while debugging with `pytest -q tests/test_e2e.py -k U02 -s`.
+Server output and other failure evidence are written to `test-results/e2e/`.
+Pull requests run the same suite through `.github/workflows/e2e.yml`; CI retains
+the evidence directory when a run fails. Extend `tests/e2e_app.py` when a new
+provider event is added, then add the browser or API assertion to
+`tests/test_e2e.py`.
