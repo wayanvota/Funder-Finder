@@ -50,6 +50,9 @@ agent = GrantAgent()
 # or Redis if you scale to multiple Render instances.
 _PROPOSALS: dict[str, str] = {}
 MAX_PDF_BYTES = int(os.getenv("MAX_PDF_BYTES", str(15 * 1024 * 1024)))
+MAX_MESSAGE_CHARS = int(os.getenv("MAX_MESSAGE_CHARS", "8000"))
+MAX_HISTORY_ITEMS = int(os.getenv("MAX_HISTORY_ITEMS", "8"))
+MAX_HISTORY_CHARS = int(os.getenv("MAX_HISTORY_CHARS", "12000"))
 
 FRONTEND = os.path.join(os.path.dirname(__file__), "..", "frontend", "index.html")
 
@@ -71,7 +74,7 @@ async def healthz():
 
 @app.post("/api/upload")
 async def upload(file: UploadFile = File(...)):
-    data = await file.read()
+    data = await file.read(MAX_PDF_BYTES + 1)
     if len(data) > MAX_PDF_BYTES:
         raise HTTPException(413, "PDF too large")
     if not (file.filename or "").lower().endswith(".pdf"):
@@ -91,24 +94,50 @@ async def _sse(message: str, proposal_text: str | None, history: list[dict]):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as exc:  # noqa: BLE001
             log.exception("agent run failed")
-            yield f"data: {json.dumps({'type': 'error', 'text': str(exc)})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'text': 'The grant search could not complete. Please retry.'})}\n\n"
     return gen
 
 
 @app.post("/api/chat")
 async def chat(request: Request):
-    body = await request.json()
-    message = (body.get("message") or "").strip()
-    if not message and not body.get("proposal_id"):
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise HTTPException(400, "Request body must be valid JSON") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Request body must be a JSON object")
+
+    raw_message = body.get("message")
+    if raw_message is not None and not isinstance(raw_message, str):
+        raise HTTPException(422, "message must be a string")
+    message = (raw_message or "").strip()
+    if len(message) > MAX_MESSAGE_CHARS:
+        raise HTTPException(413, f"message exceeds {MAX_MESSAGE_CHARS} characters")
+
+    proposal_id = body.get("proposal_id")
+    if proposal_id is not None and not isinstance(proposal_id, str):
+        raise HTTPException(422, "proposal_id must be a string")
+    if not message and not proposal_id:
         raise HTTPException(400, "Provide a message or a proposal_id")
     proposal_text = None
-    if body.get("proposal_id"):
-        proposal_text = _PROPOSALS.get(body["proposal_id"])
+    if proposal_id:
+        proposal_text = _PROPOSALS.get(proposal_id)
         if proposal_text is None:
             raise HTTPException(404, "Unknown proposal_id (it may have expired)")
     if not message:
         message = "Find grant opportunities that fit this proposal."
     history = body.get("history") or []
+    if not isinstance(history, list):
+        raise HTTPException(422, "history must be a list")
+    if len(history) > MAX_HISTORY_ITEMS:
+        raise HTTPException(413, f"history exceeds {MAX_HISTORY_ITEMS} items")
+    for item in history:
+        if not isinstance(item, dict) or item.get("role") not in {"user", "assistant"}:
+            raise HTTPException(422, "history items require a valid role and string content")
+        if not isinstance(item.get("content"), str):
+            raise HTTPException(422, "history items require a valid role and string content")
+        if len(item["content"]) > MAX_HISTORY_CHARS:
+            raise HTTPException(413, f"history item exceeds {MAX_HISTORY_CHARS} characters")
     gen = await _sse(message, proposal_text, history)
     return StreamingResponse(
         gen(),

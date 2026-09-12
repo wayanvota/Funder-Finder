@@ -180,15 +180,25 @@ async function upload(file) {
 
 function el(cls, html) { const d = document.createElement('div'); d.className = cls; if (html != null) d.innerHTML = html; return d; }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function safeUrl(value) {
+  try {
+    const parsed = new URL(value);
+    return ['http:', 'https:'].includes(parsed.protocol) ? escapeHtml(parsed.href) : '#';
+  } catch (_) {
+    return '#';
+  }
+}
 
 function renderCard(o) {
-  const card = el('card ' + (o.source || 'federal'));
-  const due = o.deadline_date ? `<span class="due">due ${o.deadline}</span>` : (o.deadline || 'Rolling');
+  const sourceClass = ['federal', 'foundation', 'web'].includes(o.source) ? o.source : 'web';
+  const sourceText = escapeHtml(o.source || 'unknown');
+  const card = el('card ' + sourceClass);
+  const due = o.deadline_date ? `<span class="due">due ${escapeHtml(o.deadline)}</span>` : escapeHtml(o.deadline || 'Rolling');
   const focus = (o.focus_areas || []).slice(0,4).join(' · ');
   card.innerHTML = `
-    <div class="t"><a href="${escapeHtml(o.url)}" target="_blank" rel="noopener">${escapeHtml(o.title)}</a></div>
+    <div class="t"><a href="${safeUrl(o.url)}" target="_blank" rel="noopener">${escapeHtml(o.title)}</a></div>
     <div class="meta">
-      <span class="tag ${o.source}">${o.source}</span>
+      <span class="tag ${sourceClass}">${sourceText}</span>
       ${o.agency ? '<span>'+escapeHtml(o.agency)+'</span>' : ''}
       <span>${due}</span>
       ${o.amount ? '<span>'+escapeHtml(o.amount)+'</span>' : ''}
@@ -237,7 +247,7 @@ async function submit() {
         if (ev.type === 'message') { reasoningText += ev.text; reasoning.textContent = reasoningText; }
         else if (ev.type === 'tool_call') {
           const q = ev.input && ev.input.query ? ': ' + escapeHtml(ev.input.query) : '';
-          chips.appendChild(el('chip', `<b>${ev.tool}</b>${q}`));
+          chips.appendChild(el('chip', `<b>${escapeHtml(ev.tool)}</b>${q}`));
         }
         else if (ev.type === 'results') { ev.opportunities.forEach(o => cards.appendChild(renderCard(o))); }
         else if (ev.type === 'error') { reasoning.innerHTML += `<div style="color:#c41c1c">⚠ ${escapeHtml(ev.text)}</div>`; }

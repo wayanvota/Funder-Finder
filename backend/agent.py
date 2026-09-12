@@ -203,7 +203,7 @@ class GrantAgent:
                     final = await stream.get_final_message()
             except Exception as exc:  # noqa: BLE001
                 log.exception("LLM stream failed")
-                yield {"type": "error", "text": f"Model error: {exc}"}
+                yield {"type": "error", "text": "The model could not complete this search. Please retry."}
                 return
 
             for block in final.content:
