@@ -10,7 +10,8 @@ permissions:
 
 jobs:
   e2e:
-    runs-on: ubuntu-26.04
+    # Playwright 1.55 does not support Ubuntu 26.04 browser dependencies yet.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
       run:
